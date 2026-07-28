@@ -6186,7 +6186,7 @@ function App(){
     });
   }
 
-  var TABS=[['sem','화남지역-7월-CEO사롱'],['sem_sh','화동-6월-CEO사롱'],['sem_may','화동-5월-CEO사롱']];
+  var TABS=[['sem','화남-7월-CEO사롱'],['sem_sh','화동-6월-CEO사롱'],['sem_may','화동-5월-CEO사롱']];
   var isInact = (tab==='inact') || (tab==='cust' && custView==='inact');  // 비활성화 = 고객 탭 하위
   var orgOnly = false;   // 조직도도 담당현황처럼 상단 기간바+KPI 보드 표기
   var noticeView = (tab==='notice');   // 공지: 링크 모음 → 상단 고객 KPI·기간바 숨김
@@ -6195,7 +6195,7 @@ function App(){
   var dsheet = (tab==='dsheet');   // 대리상 계약현황(별도 메뉴): 상단 고객 KPI 보드 숨김(기간바는 유지)
   var dsoView = (tab==='dso');      // DSO 분석: 독립 메뉴 · 별도 데이터셋 → 상단 고객 KPI·기간바 숨김
   var lastS=snaps.length? snaps[snaps.length-1] : null;
-  var TITLE={notice:'공지',price:'가격동향',overview:'월별현황',weekly:'주간현황',mgr:'담당자별 실적',dealer:'대리상별 실적',dsheet:'대리상 계약현황',cust:'하부고객(CRM)',dso:'DSO 분석',inact:'비활성화 고객',sem:'화남지역-7월-CEO사롱',sem_sh:'화동-6월-CEO사롱',sem_may:'화동-5월-CEO사롱'};
+  var TITLE={notice:'공지',price:'가격동향',overview:'월별현황',weekly:'주간현황',mgr:'담당자별 실적',dealer:'대리상별 실적',dsheet:'대리상 계약현황',cust:'하부고객(CRM)',dso:'DSO 분석',inact:'비활성화 고객',sem:'화남-7월-CEO사롱',sem_sh:'화동-6월-CEO사롱',sem_may:'화동-5월-CEO사롱'};
   var TAB_ZH={notice:'公告',price:'价格趋势',overview:'月度概况',weekly:'周概况',mgr:'负责人',dealer:'代理商',dsheet:'代理商合同',cust:'下部客户(CRM)',dso:'DSO分析',inact:'停滞客户',sem:'华南地区-7月-CEO沙龙'};
   var TITLE_ZH={notice:'公告',price:'价格趋势(诊所·DSO·产品)',overview:'月度概况',weekly:'周概况',mgr:'负责人业绩',dealer:'代理商业绩',dsheet:'代理商合同现况',cust:'下部客户(CRM)',dso:'DSO分析',inact:'停滞客户',sem:'华南地区-7月-CEO沙龙'};
   var zh=(lang==='zh');
