@@ -5031,32 +5031,76 @@ function SeminarTab(p){
     fr.onload=function(e){ try{
       var wb=XLSX.read(new Uint8Array(e.target.result),{type:'array'});
       var ws=wb.Sheets[wb.SheetNames[0]];
-      var arr=XLSX.utils.sheet_to_json(ws,{defval:''});
-      if(!arr.length){ alert('엑셀에 데이터가 없습니다.'); return; }
+      var aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if(!aoa.length){ alert('엑셀에 데이터가 없습니다.'); return; }
+      // ── 어떤 레이아웃이 와도 필요한 항목을 자동 인식(제목행 건너뜀 + 열 이름 동의어 매칭) ──
+      var SYN={
+        id:/^id$/i,
+        no:/序号|编号|^序$|^no\.?$|번호|순번|^#$/i,
+        name:/姓名|名字|^姓\s*名$|客户姓名|医生姓名|^name$|이름|성함|담당의사|医生姓名/i,
+        clinic:/单位|诊所|口腔|医院|门诊|机构|clinic|치과|병원|客户单位|单位名称|医院名称|机构名称|门店/i,
+        province:/省份|^省$/i,
+        city:/城市|^市$|地市/i,
+        region:/^地区$|区域|所在地|地址|region|지역|地域|片区/i,
+        mgr:/负责人|负责|担当|跟进人|业务员|^业务$|销售|对接人|担当者|mgr|담당/i,
+        phone:/联系方式|联系电话|电话|手机|号码|contact|phone|tel|연락/i,
+        newc:/新老|新\/老|新老客户|新客|老客|客户类型|新旧|신규|기존/i,
+        att:/签到|是否签到|参会|参加|出席|到场|签到情况|출석|참가/i,
+        visit:/拜访|访问|回访|방문|拜访日期|拜访时间|计划拜访/i,
+        sys:/系统|产品|机型|시스템|品牌/i,
+        grade:/进度|等级|意向|评级|阶段|고객진도|진도/i,
+        result:/备注|结果|情况|跟进|沟通|内容|说明|反馈|결과|비고|remark|note|详情|要点/i
+      };
+      function scanRow(r){ var map={}, n=0; (r||[]).forEach(function(cell,ci){ var t=String(cell==null?'':cell).trim(); if(!t) return; for(var f in SYN){ if(map[f]===undefined && SYN[f].test(t)){ map[f]=ci; n++; break; } } }); return {map:map,n:n}; }
+      var hi=-1, CM=null, bestN=0;
+      for(var ri=0; ri<Math.min(15,aoa.length); ri++){ var s=scanRow(aoa[ri]); if(s.n>bestN && (s.map.name!==undefined||s.map.clinic!==undefined)){ bestN=s.n; CM=s.map; hi=ri; } }
+      if(hi<0 || !CM || bestN<2){ alert('표의 제목(헤더) 행을 찾지 못했습니다.\n이름·단위(치과) 같은 열 제목이 포함된 엑셀인지 확인해 주세요.'); return; }
+      // 제목 없는 메모/비고 열 자동 보정: 남는 열 중 긴 텍스트가 가장 많은 열을 결과내용으로
+      if(CM.result===undefined){
+        var used={}; for(var uf in CM) used[CM[uf]]=1;
+        var ncols=0; aoa.forEach(function(r){ if(r&&r.length>ncols) ncols=r.length; });
+        var bcol=-1, bscore=0;
+        for(var c=0;c<ncols;c++){ if(used[c]) continue; var sc=0; for(var d0=hi+1; d0<aoa.length; d0++){ if(String((aoa[d0]||[])[c]||'').trim().length>=6) sc++; } if(sc>bscore){ bscore=sc; bcol=c; } }
+        if(bcol>=0 && bscore>=Math.max(3,(aoa.length-hi-1)*0.2)) CM.result=bcol;
+      }
+      function cv(row,f){ var ci=CM[f]; return (ci===undefined||row[ci]==null)?'':String(row[ci]).trim(); }
       var cur=flattenFu(fuMap);
       function keyOf(cl,nm2){ cl=String(cl||'').trim(); nm2=String(nm2||'').trim(); return (cl||nm2)?(cl+'|'+nm2):''; }
       var byId={}, byKey={};
       cur.forEach(function(r,i){ if(r&&r.id!=null) byId[r.id]=i; var k=keyOf(r.clinic,r.name); if(k&&byKey[k]===undefined) byKey[k]=i; });
-      var added=0, upd=0;
-      arr.forEach(function(row){
-        function g(k){ return row[k]!=null? String(row[k]).trim() : ''; }
-        var id=g('ID')||g('id');
-        var att=(g('참가')==='미참가'||g('참가')==='未到'||g('참가')==='0')?0:1;
-        var gradeRaw=g('고객진도율').replace(/[^0-9]/g,'');
-        var fields={ no:g('번호'), clinic:g('치과'), name:g('이름'), region:g('지역'), mgr:g('담당'), att:att, newc:(g('신규/기존')||''), visit:g('방문일자'), sys:g('시스템'), result:g('결과내용') };
+      var added=0, upd=0, seq=0;
+      for(var dr=hi+1; dr<aoa.length; dr++){
+        var row=aoa[dr]||[];
+        var name=cv(row,'name'), clinic=cv(row,'clinic');
+        if(!name && !clinic) continue;
+        seq++;
+        var prov=cv(row,'province'), city=cv(row,'city'), reg=cv(row,'region');
+        var region = reg || [prov,city].filter(Boolean).join('·');
+        var note=cv(row,'result'), phone=cv(row,'phone');
+        var result = note + (phone? ((note?'  ':'')+'☎ '+phone) : '');
+        var attRaw=cv(row,'att');
+        var att = /未到|未签|缺席|未参加|不参加|미참|^no$|^0$|✗|×/i.test(attRaw) ? 0 : 1;
+        var newcRaw=cv(row,'newc');
+        var newc = /老|旧|기존|old|已有|复购/i.test(newcRaw) ? '기존' : (/新|신규|new|首次/i.test(newcRaw)? '신규' : '');
+        if(!newc){ newc = /老客|已在用|已在实用|旧客|复购|已给过/.test(result)? '기존' : '신규'; }
+        var gradeRaw=cv(row,'grade').replace(/[^0-9]/g,'');
+        var fields={ no:(cv(row,'no')||String(seq)), clinic:clinic, name:name, region:region, mgr:cv(row,'mgr'), att:att, newc:newc, visit:cv(row,'visit'), sys:cv(row,'sys'), result:result, result_ko:(typeof cnToKo==='function'? (cnToKo(result)||result) : result) };
         if(gradeRaw!=='') fields.grade=parseInt(gradeRaw,10)||0;
-        var k2=keyOf(fields.clinic, fields.name);
+        var id=cv(row,'id');
+        var k2=keyOf(clinic,name);
         var ti=-1;
         if(id && byId[id]!==undefined) ti=byId[id];
-        else if(k2 && byKey[k2]!==undefined) ti=byKey[k2];   // ID 없거나 안 맞으면 치과+이름으로 매칭
-        if(ti>=0){ var r=Object.assign({},cur[ti]); for(var kk in fields){ r[kk]=fields[kk]; } if(id) r.id=r.id||id; cur[ti]=r; upd++; }
-        else { var nid=id||('fu_x'+cur.length+'_'+(fields.no||fields.name||'')); var nr=Object.assign({id:nid,follow:'是',signin:'',status:'',qty:'',visits:'',result_ko:''}, fields); cur.push(nr); byId[nid]=cur.length-1; if(k2) byKey[k2]=cur.length-1; added++; }
-      });
+        else if(k2 && byKey[k2]!==undefined) ti=byKey[k2];
+        if(ti>=0){ var r=Object.assign({},cur[ti]); for(var kk in fields){ if(fields[kk]!=='' && fields[kk]!=null) r[kk]=fields[kk]; } if(id) r.id=r.id||id; cur[ti]=r; upd++; }
+        else { var nid=id||('fu_x'+cur.length+'_'+(fields.no||name)); var nr=Object.assign({id:nid,follow:'是',signin:'',status:'',qty:'',visits:''}, fields); cur.push(nr); byId[nid]=cur.length-1; if(k2) byKey[k2]=cur.length-1; added++; }
+      }
+      var _lab={no:'번호',name:'이름',clinic:'치과',region:'지역',province:'성',city:'시',mgr:'담당',phone:'연락처',newc:'신규/기존',att:'참가',visit:'방문일',sys:'시스템',grade:'진도율',result:'결과내용'};
+      var _det=Object.keys(CM).map(function(f){ return _lab[f]||f; }).join(', ');
       // 최종 중복 제거: 같은 치과+이름은 하나만 유지(뒤쪽=최신 우선)
       var seen={}, dedup=[], dupN=0;
       for(var di=cur.length-1; di>=0; di--){ var rr=cur[di]; var kk2=keyOf(rr.clinic,rr.name); if(kk2){ if(seen[kk2]){ dupN++; continue; } seen[kk2]=1; } dedup.unshift(rr); }
       var nm={}; nm[fuSrcWK]=dedup; setFuMap(function(){ return nm; });
-      alert('엑셀 불러오기 완료 — 갱신 '+upd+'건, 추가 '+added+'건'+(dupN?(' · 중복 정리 '+dupN+'건'):'')+'.\n(ID가 같거나 치과+이름이 같은 행은 갱신됩니다)');
+      alert('엑셀 불러오기 완료 — 갱신 '+upd+'건, 추가 '+added+'건'+(dupN?(' · 중복 정리 '+dupN+'건'):'')+'.\n\n자동 인식된 항목: '+_det+'\n(제목행 위치·열 이름이 달라도 자동으로 맞춰 넣습니다)');
     }catch(err){ alert('엑셀을 읽지 못했습니다: '+err.message); } };
     fr.readAsArrayBuffer(f);
   }
