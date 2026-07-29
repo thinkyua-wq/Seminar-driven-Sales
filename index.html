@@ -47,6 +47,20 @@ option,select,
 .rb:hover{background:#4a4a4a;color:#fff}
 .rb.on{background:var(--tl);color:#fff}
 .rb .rbi{font-size:12px;opacity:.9}
+/* 본부(그룹) 접이식 메뉴 */
+.rgrp{margin-bottom:4px}
+.rg-h{font:inherit;font-size:13px;font-weight:700;text-align:left;padding:7px 9px;border:0;background:var(--side3);color:#eee;cursor:pointer;border-radius:var(--rd);display:flex;align-items:center;gap:7px;width:100%;transition:.12s}
+.rg-h:hover{background:#4a4a4a}
+.rg-h.open{background:#3a3f45}
+.rg-ar{font-size:10px;width:10px;opacity:.85}
+.rg-n{margin-left:auto;font-size:11px;font-weight:600;background:rgba(255,255,255,.14);color:#dfdfdf;border-radius:9px;padding:1px 7px}
+.rg-kids{display:flex;flex-direction:column;gap:2px;margin:3px 0 3px 8px;padding-left:6px;border-left:2px solid rgba(255,255,255,.10)}
+.rk-row{display:flex;align-items:center;gap:2px}
+.rb.rk{flex:1 1 auto;font-size:12.5px;font-weight:600;padding:6px 9px}
+.rk-x{flex:0 0 auto;border:0;background:transparent;color:#9aa0a8;cursor:pointer;font-size:12px;padding:3px 5px;border-radius:5px;line-height:1}
+.rk-x:hover{background:rgba(255,255,255,.12);color:#fff}
+.rk-add{font:inherit;font-size:11.5px;font-weight:600;text-align:left;padding:5px 9px;border:1px dashed rgba(255,255,255,.22);background:transparent;color:#b9d9d2;cursor:pointer;border-radius:var(--rd);width:100%;margin-top:1px}
+.rk-add:hover{background:rgba(45,163,138,.16);color:#fff;border-color:var(--tl)}
 .rsel{width:100%;font:inherit;font-size:12.5px;padding:6px 7px;background:var(--side3);
   color:#e4e4e4;border:1px solid #4a4a4a;border-radius:var(--rd);margin-bottom:5px}
 .rsel:hover{border-color:var(--tl)}
@@ -1460,7 +1474,7 @@ function cloudLoad(url, slot){
       if(!json) throw new Error('압축 해제 실패');
       d=JSON.parse(json);
     }
-    var _hasSem=(d.semFu&&Object.keys(d.semFu).length)||(d.semFuSH&&Object.keys(d.semFuSH).length)||(d.semFuMay&&Object.keys(d.semFuMay).length);
+    var _hasSem=(d.semStore&&Object.keys(d.semStore).length)||(d.semFu&&Object.keys(d.semFu).length)||(d.semFuSH&&Object.keys(d.semFuSH).length)||(d.semFuMay&&Object.keys(d.semFuMay).length);
     if(!d || ((!d.rows||!d.rows.length) && (!d.snaps||!d.snaps.length) && !_hasSem)) return null;
     if(d._app && d._app!==APP_TAG){
       if(!confirm('⚠️ 이 클라우드 시트는 다른 앱('+d._app+')의 데이터로 보입니다.\n그래도 불러올까요?')) return null;
@@ -1479,10 +1493,17 @@ function cloudPeek(url){
     }
     if(!d || typeof d!=='object') return null;
     function _sc(mm){ var t=0; for(var k in (mm||{})) t+=((mm[k]||[]).length); return t; }
-    var sem={fn:_sc(d.semFu), sh:_sc(d.semFuSH), may:_sc(d.semFuMay)};
-    var hasAny=(d.rows&&d.rows.length)||sem.fn||sem.sh||sem.may;
+    var semLines=[], semTot=0;
+    if(d.semStore && typeof d.semStore==='object'){
+      var titleById={}; (d.semList||[]).forEach(function(s){ titleById[s.id]=(s.title&&s.title.ko)||s.id; });
+      for(var id in d.semStore){ var c=_sc(d.semStore[id]); semTot+=c; semLines.push((titleById[id]||id)+' '+c); }
+    } else {
+      var mfn=_sc(d.semFu), msh=_sc(d.semFuSH), mmay=_sc(d.semFuMay); semTot=mfn+msh+mmay;
+      if(mfn||msh||mmay){ semLines=['화남 '+mfn,'화동6월 '+msh,'화동5월 '+mmay]; }
+    }
+    var hasAny=(d.rows&&d.rows.length)||semTot;
     if(!hasAny) return null;
-    return {rows:(d.rows?d.rows.length:0), at:j.lastSaved||d._at||null, sem:sem};
+    return {rows:(d.rows?d.rows.length:0), at:j.lastSaved||d._at||null, semLines:semLines, semTot:semTot};
   }).catch(function(){ return null; });
 }
 
@@ -3479,6 +3500,22 @@ var DH_PROVS=[
   {k:'SD',ko:'산동',cn:'山东',rx:/山东|济南|青岛|淄博|潍坊|烟台|临沂|济宁|泰安|威海|滨州|东营|日照|德州|聊城|菏泽|枣庄/}
 ];
 var SEM_LS = { edu:'hncrm_sem_edu_v2', meet:'hncrm_sem_meet_v2', fu:'hncrm_sem_fu_v13' };
+// ── 세미나 레지스트리(확장형): 목록 + ID별 저장소 — 세미나 무제한 추가·삭제, ID로 분리되어 서로 섞이지 않음 ──
+var SEM_LIST_LS='hncrm_sem_list_v2', SEM_STORE_LS='hncrm_sem_store_v2', SEM_GROUPS_LS='hncrm_sem_groups_v2';
+function provCfgFor(pk){ return (pk==='DH')? DH_PROVS : null; }  // null → SeminarTab 기본(광동/광서/해남)
+// 본부(그룹) — 세미나는 각 본부 하부로 들어가고, 본부 헤더를 누르면 펴짐/닫힘
+function semDefaultGroups(){ return [ {k:'HN',ko:'화남본부',cn:'华南本部'}, {k:'DH',ko:'화동본부',cn:'华东本部'} ]; }
+function semDefaultList(){ return [
+  {id:'hn7', group:'HN', title:{ko:'화남-7월-CEO 사롱 26/07/14',cn:'华南-7月-CEO沙龙 26/07/14'}, prov:'HN', mgrText:false},
+  {id:'dh6', group:'DH', title:{ko:'화동-6월-CEO사롱 26/06/26',cn:'华东-6月-CEO沙龙 26/06/26'}, prov:'DH', mgrText:true},
+  {id:'dh5', group:'DH', title:{ko:'화동-5월-CEO사롱 26/05/11',cn:'华东-5月-CEO沙龙 26/05/11'}, prov:'DH', mgrText:true}
+]; }
+function SEM_SEED_BY_ID(){ return { hn7:{w:'2026-W30',s:SEM_FU_SEED}, dh6:{w:'2026-W26',s:SEM_FU_SEED_SH}, dh5:{w:'2026-W20',s:SEM_FU_SEED_MAY} }; }
+function semDefaultStore(){
+  function pick(lsKey, seedWeek, seed){ try{ var r=localStorage.getItem(lsKey); if(r){ var o=JSON.parse(r); if(o&&!Array.isArray(o)&&typeof o==='object') return o; if(Array.isArray(o)&&o.length){ var m={}; m[seedWeek]=o; return m; } } }catch(e){} var s={}; s[seedWeek]=seed; return s; }
+  return { hn7: pick('hncrm_sem_fu_v13','2026-W30',SEM_FU_SEED), dh6: pick('hncrm_sem_fu_sh_v2','2026-W26',SEM_FU_SEED_SH), dh5: pick('hncrm_sem_fu_may_v2','2026-W20',SEM_FU_SEED_MAY) }; }
+// 저장소 전체를 세미나별로 한 번에 정리(단일 명단 통합 + 중복 제거)
+function SEM_STORE_CONSOLIDATE(store){ var out={}; for(var id in (store||{})){ out[id]=SEM_CONSOLIDATE(store[id]); } return out; }
 function semLoad(k, fb){ try{ var r=localStorage.getItem(SEM_LS[k]); if(!r) return fb; var o=JSON.parse(r); return (o&&o.length!==undefined)?o:fb; }catch(e){ return fb; } }
 function semSave(k, v){ try{ localStorage.setItem(SEM_LS[k], JSON.stringify(v)); }catch(e){} }
 
@@ -5593,7 +5630,7 @@ function SeminarTab(p){
           h('button',{className:'btn sm',style:{marginLeft:'6px'},onClick:fuExport,title:L('명단을 .json 파일로 저장','导出为.json')}, 'JSON↓'),
           h('label',{className:'btn sm',style:{marginLeft:'4px',cursor:'pointer',position:'relative',overflow:'hidden'},title:L('.json 명단 합치기/덮어쓰기','导入.json')}, 'JSON↑',
             h('input',{type:'file',accept:'.json,application/json',style:{position:'absolute',inset:0,opacity:0,cursor:'pointer'},onChange:function(e){ fuImport(e.target.files[0]); e.target.value=''; }})),
-          h('button',{className:'btn sm',style:{marginLeft:'8px',color:'#c0504d',borderColor:'#c0504d'},title:L('브라우저에 쌓인 중복 데이터를 지우고 원본 명단으로 되돌립니다','清除浏览器中累积的重复数据，恢复原始名单'),onClick:function(){ if(window.confirm(L('이 세미나의 브라우저 저장 데이터를 지우고 원본 명단으로 초기화할까요?\\n(엑셀/JSON으로 다시 불러올 수 있습니다)','确定清除该研讨会数据并恢复原始名单吗？'))){ try{ localStorage.removeItem(p.lsKey||'hncrm_sem_fu_v13'); }catch(e){} location.reload(); } }}, L('초기화','重置'))),
+          h('button',{className:'btn sm',style:{marginLeft:'8px',color:'#c0504d',borderColor:'#c0504d'},title:L('이 세미나 명단을 원본(시드)으로 되돌립니다','将本研讨会名单恢复为原始(种子)'),onClick:function(){ if(window.confirm(L('이 세미나의 명단을 원본으로 초기화할까요?\\n(엑셀/JSON으로 다시 불러올 수 있습니다)','确定将本研讨会名单恢复为原始吗？'))){ if(p.onReset) p.onReset(); } }}, L('초기화','重置'))),
         c.mkpis);
     var listCard=h('div',{className:'card wide'},
         h('div',{className:'card-h'},
@@ -5677,7 +5714,7 @@ function App(){
     var st=store();
     return (st.rows && st.rows.length)? st.rows : SEED.slice();
   }); var rows=_a[0], setRows=_a[1];
-  var _c=useState('sem'); var tab=_c[0], setTab=_c[1];
+  var _c=useState('sem_hn7'); var tab=_c[0], setTab=_c[1];
   var isSemTab=/^sem/.test(tab);
   var _d=useState({prov:'',mgr:'',dealer:'',type:'',flag:''}); var flt=_d[0], setFlt=_d[1];
   var _e=useState(''); var q=_e[0], setQ=_e[1];
@@ -5698,23 +5735,31 @@ function App(){
   function setTP(k,v){ setTprov(function(o){ var n=Object.assign({},o); n[k]=v; return n; }); }
   var fileRef=useRef(null);
 
-  // ── 세미나(화남 하반기) 상태 — 독립 저장 ──
+  // ── 세미나(교육·미팅) 상태 — 독립 저장 ──
   var _se=useState(function(){ return semLoad('edu', SEM_EDU_SEED); });   var semEdu=_se[0], setSemEdu=_se[1];
   var _sm=useState(function(){ return semLoad('meet', SEM_MEET_SEED); }); var semMeet=_sm[0], setSemMeet=_sm[1];
-  var _sfu=useState(function(){
-    try{ var r=localStorage.getItem(SEM_LS.fu); if(r){ var o=JSON.parse(r);
-      if(o && !Array.isArray(o) && typeof o==='object'){ return o; }
-      if(Array.isArray(o) && o.length){ var mig={}; mig[FU_SEED_WEEK]=o; return mig; } } }catch(e){}
-    var s={}; s[FU_SEED_WEEK]=SEM_FU_SEED; return s;
-  });    var semFu=_sfu[0], setSemFu=_sfu[1];
-  var _sfuSH=useState(function(){
-    try{ var r=localStorage.getItem('hncrm_sem_fu_sh_v2'); if(r){ var o=JSON.parse(r); if(o && !Array.isArray(o) && typeof o==='object') return o; } }catch(e){}
-    var s={}; s['2026-W26']=SEM_FU_SEED_SH; return s;
-  });    var semFuSH=_sfuSH[0], setSemFuSH=_sfuSH[1];
-  var _sfuMay=useState(function(){
-    try{ var r=localStorage.getItem('hncrm_sem_fu_may_v2'); if(r){ var o=JSON.parse(r); if(o && !Array.isArray(o) && typeof o==='object') return o; } }catch(e){}
-    var s={}; s['2026-W20']=SEM_FU_SEED_MAY; return s;
-  });    var semFuMay=_sfuMay[0], setSemFuMay=_sfuMay[1];
+  // ── 세미나 레지스트리(확장형): 본부(그룹) + 세미나 목록 + ID별 저장소 ──
+  var _sgrp=useState(function(){ try{ var r=localStorage.getItem(SEM_GROUPS_LS); if(r){ var o=JSON.parse(r); if(Array.isArray(o)&&o.length) return o; } }catch(e){} return semDefaultGroups(); });
+  var semGroups=_sgrp[0], setSemGroups=_sgrp[1];
+  var _slist=useState(function(){ try{ var r=localStorage.getItem(SEM_LIST_LS); if(r){ var o=JSON.parse(r); if(Array.isArray(o)&&o.length) return o; } }catch(e){} return semDefaultList(); });
+  var semList=_slist[0], setSemList=_slist[1];
+  var _sstore=useState(function(){ try{ var r=localStorage.getItem(SEM_STORE_LS); if(r){ var o=JSON.parse(r); if(o&&typeof o==='object'&&!Array.isArray(o)) return o; } }catch(e){} return semDefaultStore(); });
+  var semStore=_sstore[0], setSemStore=_sstore[1];
+  var _sopen=useState(function(){ var o={}; (semDefaultGroups()).forEach(function(g){ o[g.k]=true; }); return o; });
+  var semOpen=_sopen[0], setSemOpen=_sopen[1];
+  // 특정 세미나 데이터 업데이트
+  function setSemData(id, updater){ setSemStore(function(st){ var cur=st[id]||{}; var nx=(typeof updater==='function')? updater(cur): updater; var ns=Object.assign({},st); ns[id]=nx; return ns; }); }
+  function semResetData(id){ var seeds=SEM_SEED_BY_ID(); var d=seeds[id]; setSemData(id, d? (function(){ var s={}; s[d.w]=d.s; return s; })() : (function(){ var s={}; s[FU_SEED_WEEK]=[]; return s; })()); }
+  // 클라우드/백업 불러오기 시 세미나 데이터 적용 (신규 store 형식 + 옛 semFu/SH/May 형식 모두 지원)
+  function applySemLoaded(o){
+    if(o.semGroups && o.semGroups.length) setSemGroups(o.semGroups);
+    if(o.semStore && typeof o.semStore==='object' && !Array.isArray(o.semStore)){
+      if(o.semList && o.semList.length) setSemList(o.semList);
+      setSemStore(function(cur){ var ns=Object.assign({},cur); for(var id in o.semStore){ ns[id]=SEM_CONSOLIDATE(o.semStore[id]); } return ns; });
+    } else if(o.semFu||o.semFuSH||o.semFuMay){   // 옛 형식 → 기본 3개 세미나로 이관
+      setSemStore(function(cur){ var ns=Object.assign({},cur); if(o.semFu) ns.hn7=SEM_CONSOLIDATE(o.semFu); if(o.semFuSH) ns.dh6=SEM_CONSOLIDATE(o.semFuSH); if(o.semFuMay) ns.dh5=SEM_CONSOLIDATE(o.semFuMay); return ns; });
+    }
+  }
   var _org=useState(function(){ try{
       var r2=localStorage.getItem('hncrm_org_v2'); if(r2) return JSON.parse(r2);
       var r1=localStorage.getItem('hncrm_org_v1'); if(r1) return {'2026-7':JSON.parse(r1)};
@@ -5744,9 +5789,22 @@ function App(){
   useEffect(function(){ try{ localStorage.setItem('hncrm_price_v1', JSON.stringify(priceData)); }catch(e){} },[priceData]);
   useEffect(function(){ semSave('edu', semEdu); },[semEdu]);
   useEffect(function(){ semSave('meet', semMeet); },[semMeet]);
-  useEffect(function(){ semSave('fu', semFu); },[semFu]);
-  useEffect(function(){ try{ localStorage.setItem('hncrm_sem_fu_sh_v2', JSON.stringify(semFuSH)); }catch(e){} },[semFuSH]);
-  useEffect(function(){ try{ localStorage.setItem('hncrm_sem_fu_may_v2', JSON.stringify(semFuMay)); }catch(e){} },[semFuMay]);
+  useEffect(function(){ try{ localStorage.setItem(SEM_LIST_LS, JSON.stringify(semList)); }catch(e){} },[semList]);
+  useEffect(function(){ try{ localStorage.setItem(SEM_STORE_LS, JSON.stringify(semStore)); }catch(e){} },[semStore]);
+  useEffect(function(){ try{ localStorage.setItem(SEM_GROUPS_LS, JSON.stringify(semGroups)); }catch(e){} },[semGroups]);
+  // ── 세미나 추가/이름변경/삭제 · 본부 접기 ──
+  function toggleGroup(k){ setSemOpen(function(o){ var n=Object.assign({},o); n[k]=!n[k]; return n; }); }
+  function addSeminarTo(gk){ var nm=(typeof prompt!=='undefined')? prompt('새 세미나 이름 (예: 화남-8월-CEO사롱 26/08/10)') : ''; if(!nm) return; nm=String(nm).trim(); if(!nm) return;
+    var id='s'+(''+Math.abs((nm+gk).split('').reduce(function(a,c){return (a*31+c.charCodeAt(0))|0;},7))).slice(0,8)+(semList.length);
+    var prov=(gk==='DH')?'DH':'HN';
+    setSemList(function(L){ return L.concat([{id:id, group:gk, title:{ko:nm,cn:nm}, prov:prov, mgrText:true}]); });
+    setSemData(id, (function(){ var s={}; s[FU_SEED_WEEK]=[]; return s; })());
+    setSemOpen(function(o){ var n=Object.assign({},o); n[gk]=true; return n; });
+    setTab('sem_'+id);
+    setMsg({t:'ok',m:'새 세미나 추가됨 — 상단 「엑셀 불러오기」 또는 「JSON↑」으로 명단을 올리세요.'});
+  }
+  function renameSeminar(id){ var s=null; semList.forEach(function(x){ if(x.id===id) s=x; }); if(!s) return; var nm=(typeof prompt!=='undefined')? prompt('세미나 이름 변경', s.title.ko) : null; if(nm===null) return; nm=String(nm).trim(); if(!nm) return; setSemList(function(L){ return L.map(function(x){ return x.id===id? Object.assign({},x,{title:{ko:nm,cn:nm}}) : x; }); }); }
+  function delSeminar(id){ if(semList.length<=1){ setMsg({t:'err',m:'마지막 세미나는 삭제할 수 없습니다.'}); return; } var s=null; semList.forEach(function(x){ if(x.id===id) s=x; }); if(!s) return; if(typeof confirm!=='undefined' && !confirm('"'+s.title.ko+'" 세미나를 삭제할까요?\n(이 세미나의 명단이 사라집니다. 되돌릴 수 없습니다.)')) return; setSemList(function(L){ var nl=L.filter(function(x){ return x.id!==id; }); if(tab==='sem_'+id && nl.length) setTab('sem_'+nl[0].id); return nl; }); setSemStore(function(st){ var ns=Object.assign({},st); delete ns[id]; return ns; }); }
 
   // ── 언어(한국어/중문) ──
   var _lg=useState(function(){ try{ return localStorage.getItem('hncrm_lang')||'ko'; }catch(e){ return 'ko'; } });
@@ -6154,11 +6212,11 @@ function App(){
   // ---- cloud ----
   function payloadNow(){
     return {rows:rows, notes:notes, snaps:db.snaps||[], hidden:hidden,
-            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semFu:SEM_CONSOLIDATE(semFu), semFuSH:SEM_CONSOLIDATE(semFuSH), semFuMay:SEM_CONSOLIDATE(semFuMay)};
+            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semGroups:semGroups, semList:semList, semStore:SEM_STORE_CONSOLIDATE(semStore)};
   }
   function payloadNow(){
     return {rows:rows, notes:notes, snaps:db.snaps||[], hidden:hidden,
-            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semFu:SEM_CONSOLIDATE(semFu), semFuSH:SEM_CONSOLIDATE(semFuSH), semFuMay:SEM_CONSOLIDATE(semFuMay)};
+            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semGroups:semGroups, semList:semList, semStore:SEM_STORE_CONSOLIDATE(semStore)};
   }
   // 저장 시 자동으로 붙는 주차 라벨 (엑셀 기준일 = 최신 스냅샷, 없으면 오늘)
   function curWeekKey(){
@@ -6170,15 +6228,16 @@ function App(){
 
   function doCloudSave(){
     if(!gurl){ setCfg(true); setMsg({t:'err',m:'먼저 설정(⚙️)에서 클라우드 URL을 입력하세요.'}); return; }
-    var _semCnt=(function(){ var t=0; [semFu,semFuSH,semFuMay].forEach(function(mm){ for(var k in (mm||{})) t+=(mm[k]||[]).length; }); return t; })();
+    var _semCnt=(function(){ var t=0; for(var id in (semStore||{})){ var mm=semStore[id]; for(var k in (mm||{})) t+=((mm[k]||[]).length); } return t; })();
     if(!rows.length && !_semCnt){ setMsg({t:'err',m:'저장할 데이터가 없습니다. 세미나 명단이나 엑셀을 먼저 불러오세요.'}); return; }
     var wk=curWeekKey();
     setBusy(true);
     cloudPeek(gurl).then(function(cur){
       var _mc=function(mm){ var t=0; for(var k in (mm||{})) t+=((mm[k]||[]).length); return t; };
+      var _semSummary=semList.map(function(s){ return s.title.ko+' '+nf(_mc(semStore[s.id])); }).join(' · ');
       var msg='클라우드에 저장합니다.\n\n'+
         '  현재 데이터: '+nf(rows.length)+'개소\n'+
-        '  세미나 인원 → 화남 '+nf(_mc(semFu))+' · 화동6월 '+nf(_mc(semFuSH))+' · 화동5월 '+nf(_mc(semFuMay))+'명\n'+
+        '  세미나 인원 → '+_semSummary+'\n'+
         '  주차 보관: '+wk+' 슬롯에 영구 저장\n';
       if(cur && cur.rows){
         msg+='\n  기존 최신본: '+nf(cur.rows)+'개소'+(cur.at? ' ('+String(cur.at).slice(0,16).replace('T',' ')+')':'')+'\n'+
@@ -6216,7 +6275,7 @@ function App(){
     setBusy(true);
     cloudPeek(gurl).then(function(cur){
       if(!cur) throw new Error('클라우드에 저장된 데이터가 없습니다.');
-      var _cs=cur.sem||{}; var _semLine=(_cs.fn||_cs.sh||_cs.may)? ('\n  세미나 인원 → 화남 '+nf(_cs.fn||0)+' · 화동6월 '+nf(_cs.sh||0)+' · 화동5월 '+nf(_cs.may||0)+'명') : '';
+      var _semLine=(cur.semLines&&cur.semLines.length)? ('\n  세미나 인원 → '+cur.semLines.join(' · ')+'명') : '';
       var ok=confirm('클라우드 최신본을 불러옵니다.\n\n'+
         '  클라우드: '+nf(cur.rows)+'개소'+(cur.at? ' ('+String(cur.at).slice(0,16).replace('T',' ')+')':'')+_semLine+'\n'+
         '  현재 화면: '+nf(rows.length)+'개소\n\n'+
@@ -6243,9 +6302,7 @@ function App(){
       iss:o.iss||{hq:null,mgr:{},deal:{}}, staff:o.staff||{}, plans:o.plans||{}});
     if(o.semEdu) setSemEdu(o.semEdu);
     if(o.semMeet) setSemMeet(o.semMeet);
-    if(o.semFu) setSemFu(SEM_CONSOLIDATE(o.semFu));
-    if(o.semFuSH) setSemFuSH(SEM_CONSOLIDATE(o.semFuSH));
-    if(o.semFuMay) setSemFuMay(SEM_CONSOLIDATE(o.semFuMay));
+    applySemLoaded(o);
     setPick(null);
     setMsg({t:'ok',m:'불러왔습니다 · '+nf(r.rows)+'개소'+(o.semEdu?(' · 세미나 '+o.semEdu.length+'건'):'')+' (저장 '+(r.at? String(r.at).slice(0,16).replace('T',' '):'-')+')'});
   }
@@ -6272,7 +6329,7 @@ function App(){
   }
 
   function exportJson(){
-    var blob=new Blob([JSON.stringify({rows:rows,notes:notes,snaps:db.snaps||[],hidden:hidden,acts:acts,iss:issOv,staff:staff,plans:plans,semEdu:semEdu,semMeet:semMeet,semFu:SEM_CONSOLIDATE(semFu),semFuSH:SEM_CONSOLIDATE(semFuSH),semFuMay:SEM_CONSOLIDATE(semFuMay),at:new Date().toISOString()},null,1)],{type:'application/json'});
+    var blob=new Blob([JSON.stringify({rows:rows,notes:notes,snaps:db.snaps||[],hidden:hidden,acts:acts,iss:issOv,staff:staff,plans:plans,semEdu:semEdu,semMeet:semMeet,semGroups:semGroups,semList:semList,semStore:SEM_STORE_CONSOLIDATE(semStore),at:new Date().toISOString()},null,1)],{type:'application/json'});
     var u=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=u; a.download='화남CRM_백업_'+today()+'_'+rows.length+'개소.json'; a.click(); URL.revokeObjectURL(u);
     setMsg({t:'ok',m:'백업 파일을 저장했습니다 · '+nf(rows.length)+'개소 · 세미나 '+semEdu.length+'건'});
@@ -6293,9 +6350,7 @@ function App(){
           iss:o.iss||{hq:null,mgr:{},deal:{}}, staff:o.staff||{}, plans:o.plans||{}});
         if(o.semEdu) setSemEdu(o.semEdu);
         if(o.semMeet) setSemMeet(o.semMeet);
-        if(o.semFu) setSemFu(SEM_CONSOLIDATE(o.semFu));
-        if(o.semFuSH) setSemFuSH(SEM_CONSOLIDATE(o.semFuSH));
-    if(o.semFuMay) setSemFuMay(SEM_CONSOLIDATE(o.semFuMay));
+        applySemLoaded(o);
         setPick(null);
         setMsg({t:'ok',m:'백업을 복원했습니다.'+(o.semEdu?(' 세미나 '+o.semEdu.length+'건 포함.'):'')});
       }catch(err){ setMsg({t:'err',m:'백업 파일이 올바르지 않습니다.'}); }
@@ -6333,7 +6388,9 @@ function App(){
     });
   }
 
-  var TABS=[['sem','화남-7월-CEO사롱'],['sem_sh','화동-6월-CEO사롱'],['sem_may','화동-5월-CEO사롱']];
+  var TABS=semList.map(function(s){ return ['sem_'+s.id, zh?s.title.cn:s.title.ko]; });
+  var curSem=null; semList.forEach(function(s){ if('sem_'+s.id===tab) curSem=s; });
+  if(isSemTab && !curSem && semList.length){ curSem=semList[0]; }   // 삭제된 탭 방어
   var isInact = (tab==='inact') || (tab==='cust' && custView==='inact');  // 비활성화 = 고객 탭 하위
   var orgOnly = false;   // 조직도도 담당현황처럼 상단 기간바+KPI 보드 표기
   var noticeView = (tab==='notice');   // 공지: 링크 모음 → 상단 고객 KPI·기간바 숨김
@@ -6371,9 +6428,23 @@ function App(){
           h('button',{className:'rbtn',style:{width:'auto',margin:0,padding:'3px 9px',fontSize:'11.5px'},
             title:'한국어/中文 전환',
             onClick:function(){ setLang(zh?'ko':'zh'); }}, zh?'한국어':'中文')),
-        h('nav',{className:'rnav'}, TABS.map(function(t){
-          return h('button',{key:t[0],className:'rb'+(tab===t[0]?' on':''),
-            onClick:function(){setTab(t[0]);}}, tTab(t[0],t[1]));
+        h('nav',{className:'rnav'}, semGroups.map(function(g){
+          var kids=semList.filter(function(s){ return (s.group||'')===g.k; });
+          var open=semOpen[g.k]!==false;
+          return h('div',{key:g.k,className:'rgrp'},
+            h('button',{className:'rg-h'+(open?' open':''),onClick:function(){ toggleGroup(g.k); }},
+              h('span',{className:'rg-ar'}, open?'▾':'▸'),
+              h('span',null, zh?g.cn:g.ko),
+              h('span',{className:'rg-n'}, kids.length)),
+            open? h('div',{className:'rg-kids'},
+              kids.map(function(s){
+                return h('div',{key:s.id,className:'rk-row'},
+                  h('button',{className:'rb rk'+(tab==='sem_'+s.id?' on':''),onClick:function(){ setTab('sem_'+s.id); }}, zh?s.title.cn:s.title.ko),
+                  h('button',{className:'rk-x',title:zh?'改名':'이름변경',onClick:function(e){ e.stopPropagation(); renameSeminar(s.id); }},'✏'),
+                  h('button',{className:'rk-x',title:zh?'删除':'삭제',onClick:function(e){ e.stopPropagation(); delSeminar(s.id); }},'×'));
+              }),
+              h('button',{className:'rk-add',onClick:function(){ addSeminarTo(g.k); }}, zh?'+ 新研讨会':'+ 새 세미나')
+            ) : null);
         }))),
 
       (isSemTab)? null : h('div',{className:'rail-s rail-kpi'},
@@ -6399,7 +6470,7 @@ function App(){
     h('main',{className:'main'},
       h('div',{className:'mhead'},
         h('div',{className:'mh-l'},
-          h('h2',null, zh?(TITLE_ZH[tab]||TITLE[tab]):TITLE[tab]),
+          h('h2',null, curSem? (zh?curSem.title.cn:curSem.title.ko) : (zh?(TITLE_ZH[tab]||TITLE[tab]):TITLE[tab])),
           (isSemTab)? null : h('div',{className:'sub'},
             (pick? (Ln('과거 주차 시점 — ','历史周 — ')+pick.y+'-'+pick.label)
             : (Ln('단위: 임플란트 개 · 1~','单位: 种植体 个 · 1~')+pm+Ln('月 누계 (엑셀 기준)','月累计 (以Excel为准)'))))),
@@ -6536,9 +6607,9 @@ function App(){
       tab==='dso'? h(DSOTab,{data:dsoData,setData:setDsoData,C:C,lang:lang,locked:!!pick,
         groupBy:'area', groupLabel:zh?'地区':'구역', hideDivFilter:true,
         hqName:zh?'华南本部':'화남본부', rollTitle:zh?'华南本部DSO销售目标(按地区)':'화남본부 DSO 판매목표 (구역별)'}):null,
-      tab==='sem'? h(SeminarTab,{lsKey:'hncrm_sem_fu_v13',edu:semEdu,setEdu:setSemEdu,meet:semMeet,setMeet:setSemMeet,fuMap:semFu,setFuMap:setSemFu,lang:lang}):
-      tab==='sem_sh'? h(SeminarTab,{lsKey:'hncrm_sem_fu_sh_v2',title:{ko:'화동-6월-CEO사롱 26/06/26',cn:'华东-6月-CEO沙龙 26/06/26'},provCfg:DH_PROVS,mgrText:true,edu:[],setEdu:function(){},meet:[],setMeet:function(){},fuMap:semFuSH,setFuMap:setSemFuSH,lang:lang}):
-      tab==='sem_may'? h(SeminarTab,{lsKey:'hncrm_sem_fu_may_v2',title:{ko:'화동-5월-CEO사롱 26/05/11',cn:'华东-5月-CEO沙龙 26/05/11'},provCfg:DH_PROVS,mgrText:true,edu:[],setEdu:function(){},meet:[],setMeet:function(){},fuMap:semFuMay,setFuMap:setSemFuMay,lang:lang}):null
+      (isSemTab && curSem)? h(SeminarTab,{key:curSem.id, semId:curSem.id, title:curSem.title, provCfg:provCfgFor(curSem.prov), mgrText:curSem.mgrText!==false,
+          edu:(curSem.id==='hn7'?semEdu:[]), setEdu:(curSem.id==='hn7'?setSemEdu:function(){}), meet:(curSem.id==='hn7'?semMeet:[]), setMeet:(curSem.id==='hn7'?setSemMeet:function(){}),
+          fuMap:(semStore[curSem.id]||{}), setFuMap:function(u){ setSemData(curSem.id,u); }, onReset:function(){ semResetData(curSem.id); }, lang:lang}):null
     )
   );
 }
