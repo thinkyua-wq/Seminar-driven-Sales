@@ -1477,8 +1477,12 @@ function cloudPeek(url){
     if(d && d._z && d._c && typeof LZString!=='undefined'){
       try{ d=JSON.parse(LZString.decompressFromBase64(d._c)); }catch(e){ return null; }
     }
-    if(!d || !d.rows) return null;
-    return {rows:d.rows.length, at:j.lastSaved||d._at||null};
+    if(!d || typeof d!=='object') return null;
+    function _sc(mm){ var t=0; for(var k in (mm||{})) t+=((mm[k]||[]).length); return t; }
+    var sem={fn:_sc(d.semFu), sh:_sc(d.semFuSH), may:_sc(d.semFuMay)};
+    var hasAny=(d.rows&&d.rows.length)||sem.fn||sem.sh||sem.may;
+    if(!hasAny) return null;
+    return {rows:(d.rows?d.rows.length:0), at:j.lastSaved||d._at||null, sem:sem};
   }).catch(function(){ return null; });
 }
 
@@ -3467,6 +3471,8 @@ var SEM_MEET_SEED = [{"id": "meet_30", "yearMonth": "2026-7", "month": "7월", "
 /* ===== 세미나(화남 하반기) 저장 헬퍼 — 독립 localStorage ===== */
 var CEO_UPD='2026-07-26';
 var FU_SEED_WEEK='2026-W30';
+// 세미나 명단 정리: 여러 주차 기록을 하나의 최종 명단으로 통합 + 중복 제거(ID 우선, 없으면 치과+이름) — 클라우드/백업 불러오기 시 옛 주차별 데이터가 다시 쌓이지 않도록
+function SEM_CONSOLIDATE(fmap){ if(!fmap||typeof fmap!=='object'||Array.isArray(fmap)) { if(Array.isArray(fmap)){ var s0={}; s0[FU_SEED_WEEK]=fmap; fmap=s0; } else return fmap; } var order=[],by={}; Object.keys(fmap).sort().forEach(function(wk){ (fmap[wk]||[]).forEach(function(r){ if(!r) return; var id=(r.id!=null&&r.id!=='')?('id:'+r.id):null; var cl=String(r.clinic||'').trim(),nm=String(r.name||'').trim(); var k=id!=null?id:((cl||nm)?('cn:'+cl+'|'+nm):('__i'+order.length)); if(by[k]!==undefined){ order[by[k]]=r; } else { by[k]=order.length; order.push(r); } }); }); var out={}; out[FU_SEED_WEEK]=order; return out; }
 var DH_PROVS=[
   {k:'SH',ko:'상해',cn:'上海',rx:/上海|浦东|黄浦|徐汇|长宁|静安|普陀|虹口|杨浦|闵行|宝山|嘉定|金山|松江|青浦|奉贤|崇明/},
   {k:'JS',ko:'강소',cn:'江苏',rx:/江苏|南京|苏州|无锡|常州|徐州|南通|扬州|镇江|盐城|连云港|淮安|泰州|宿迁/},
@@ -6148,11 +6154,11 @@ function App(){
   // ---- cloud ----
   function payloadNow(){
     return {rows:rows, notes:notes, snaps:db.snaps||[], hidden:hidden,
-            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semFu:semFu, semFuSH:semFuSH, semFuMay:semFuMay};
+            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semFu:SEM_CONSOLIDATE(semFu), semFuSH:SEM_CONSOLIDATE(semFuSH), semFuMay:SEM_CONSOLIDATE(semFuMay)};
   }
   function payloadNow(){
     return {rows:rows, notes:notes, snaps:db.snaps||[], hidden:hidden,
-            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semFu:semFu, semFuSH:semFuSH, semFuMay:semFuMay};
+            acts:acts, iss:issOv, staff:staff, plans:plans, semEdu:semEdu, semMeet:semMeet, semFu:SEM_CONSOLIDATE(semFu), semFuSH:SEM_CONSOLIDATE(semFuSH), semFuMay:SEM_CONSOLIDATE(semFuMay)};
   }
   // 저장 시 자동으로 붙는 주차 라벨 (엑셀 기준일 = 최신 스냅샷, 없으면 오늘)
   function curWeekKey(){
@@ -6169,8 +6175,10 @@ function App(){
     var wk=curWeekKey();
     setBusy(true);
     cloudPeek(gurl).then(function(cur){
+      var _mc=function(mm){ var t=0; for(var k in (mm||{})) t+=((mm[k]||[]).length); return t; };
       var msg='클라우드에 저장합니다.\n\n'+
         '  현재 데이터: '+nf(rows.length)+'개소\n'+
+        '  세미나 인원 → 화남 '+nf(_mc(semFu))+' · 화동6월 '+nf(_mc(semFuSH))+' · 화동5월 '+nf(_mc(semFuMay))+'명\n'+
         '  주차 보관: '+wk+' 슬롯에 영구 저장\n';
       if(cur && cur.rows){
         msg+='\n  기존 최신본: '+nf(cur.rows)+'개소'+(cur.at? ' ('+String(cur.at).slice(0,16).replace('T',' ')+')':'')+'\n'+
@@ -6208,10 +6216,11 @@ function App(){
     setBusy(true);
     cloudPeek(gurl).then(function(cur){
       if(!cur) throw new Error('클라우드에 저장된 데이터가 없습니다.');
+      var _cs=cur.sem||{}; var _semLine=(_cs.fn||_cs.sh||_cs.may)? ('\n  세미나 인원 → 화남 '+nf(_cs.fn||0)+' · 화동6월 '+nf(_cs.sh||0)+' · 화동5월 '+nf(_cs.may||0)+'명') : '';
       var ok=confirm('클라우드 최신본을 불러옵니다.\n\n'+
-        '  클라우드: '+nf(cur.rows)+'개소'+(cur.at? ' ('+String(cur.at).slice(0,16).replace('T',' ')+')':'')+'\n'+
+        '  클라우드: '+nf(cur.rows)+'개소'+(cur.at? ' ('+String(cur.at).slice(0,16).replace('T',' ')+')':'')+_semLine+'\n'+
         '  현재 화면: '+nf(rows.length)+'개소\n\n'+
-        '⚠️ 지금 화면의 데이터·수정 내역이 덮어써집니다. 계속할까요?');
+        '⚠️ 위 세미나 인원이 예상과 다르면(예: 화동5월이 83명) 클라우드에 옛 데이터가 남은 것이니 불러오지 말고, 먼저 「클라우드 저장」으로 덮어쓰세요.\n\n지금 화면의 데이터·수정 내역이 덮어써집니다. 계속할까요?');
       if(!ok) return null;
       return cloudLoad(gurl,'main');
     }).then(applyLoaded).catch(function(e){
@@ -6234,9 +6243,9 @@ function App(){
       iss:o.iss||{hq:null,mgr:{},deal:{}}, staff:o.staff||{}, plans:o.plans||{}});
     if(o.semEdu) setSemEdu(o.semEdu);
     if(o.semMeet) setSemMeet(o.semMeet);
-    if(o.semFu) setSemFu(o.semFu);
-    if(o.semFuSH) setSemFuSH(o.semFuSH);
-    if(o.semFuMay) setSemFuMay(o.semFuMay);
+    if(o.semFu) setSemFu(SEM_CONSOLIDATE(o.semFu));
+    if(o.semFuSH) setSemFuSH(SEM_CONSOLIDATE(o.semFuSH));
+    if(o.semFuMay) setSemFuMay(SEM_CONSOLIDATE(o.semFuMay));
     setPick(null);
     setMsg({t:'ok',m:'불러왔습니다 · '+nf(r.rows)+'개소'+(o.semEdu?(' · 세미나 '+o.semEdu.length+'건'):'')+' (저장 '+(r.at? String(r.at).slice(0,16).replace('T',' '):'-')+')'});
   }
@@ -6263,7 +6272,7 @@ function App(){
   }
 
   function exportJson(){
-    var blob=new Blob([JSON.stringify({rows:rows,notes:notes,snaps:db.snaps||[],hidden:hidden,acts:acts,iss:issOv,staff:staff,plans:plans,semEdu:semEdu,semMeet:semMeet,semFu:semFu,semFuSH:semFuSH,semFuMay:semFuMay,at:new Date().toISOString()},null,1)],{type:'application/json'});
+    var blob=new Blob([JSON.stringify({rows:rows,notes:notes,snaps:db.snaps||[],hidden:hidden,acts:acts,iss:issOv,staff:staff,plans:plans,semEdu:semEdu,semMeet:semMeet,semFu:SEM_CONSOLIDATE(semFu),semFuSH:SEM_CONSOLIDATE(semFuSH),semFuMay:SEM_CONSOLIDATE(semFuMay),at:new Date().toISOString()},null,1)],{type:'application/json'});
     var u=URL.createObjectURL(blob),a=document.createElement('a');
     a.href=u; a.download='화남CRM_백업_'+today()+'_'+rows.length+'개소.json'; a.click(); URL.revokeObjectURL(u);
     setMsg({t:'ok',m:'백업 파일을 저장했습니다 · '+nf(rows.length)+'개소 · 세미나 '+semEdu.length+'건'});
@@ -6284,9 +6293,9 @@ function App(){
           iss:o.iss||{hq:null,mgr:{},deal:{}}, staff:o.staff||{}, plans:o.plans||{}});
         if(o.semEdu) setSemEdu(o.semEdu);
         if(o.semMeet) setSemMeet(o.semMeet);
-        if(o.semFu) setSemFu(o.semFu);
-        if(o.semFuSH) setSemFuSH(o.semFuSH);
-    if(o.semFuMay) setSemFuMay(o.semFuMay);
+        if(o.semFu) setSemFu(SEM_CONSOLIDATE(o.semFu));
+        if(o.semFuSH) setSemFuSH(SEM_CONSOLIDATE(o.semFuSH));
+    if(o.semFuMay) setSemFuMay(SEM_CONSOLIDATE(o.semFuMay));
         setPick(null);
         setMsg({t:'ok',m:'백업을 복원했습니다.'+(o.semEdu?(' 세미나 '+o.semEdu.length+'건 포함.'):'')});
       }catch(err){ setMsg({t:'err',m:'백업 파일이 올바르지 않습니다.'}); }
