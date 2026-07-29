@@ -1447,7 +1447,8 @@ function cloudLoad(url, slot){
       if(!json) throw new Error('압축 해제 실패');
       d=JSON.parse(json);
     }
-    if(!d || (!d.rows && !d.snaps)) return null;
+    var _hasSem=(d.semFu&&Object.keys(d.semFu).length)||(d.semFuSH&&Object.keys(d.semFuSH).length)||(d.semFuMay&&Object.keys(d.semFuMay).length);
+    if(!d || ((!d.rows||!d.rows.length) && (!d.snaps||!d.snaps.length) && !_hasSem)) return null;
     if(d._app && d._app!==APP_TAG){
       if(!confirm('⚠️ 이 클라우드 시트는 다른 앱('+d._app+')의 데이터로 보입니다.\n그래도 불러올까요?')) return null;
     }
@@ -3458,7 +3459,7 @@ var DH_PROVS=[
   {k:'JS',ko:'강소',cn:'江苏',rx:/江苏|南京|苏州|无锡|常州|徐州|南通|扬州|镇江|盐城|连云港|淮安|泰州|宿迁/},
   {k:'SD',ko:'산동',cn:'山东',rx:/山东|济南|青岛|淄博|潍坊|烟台|临沂|济宁|泰安|威海|滨州|东营|日照|德州|聊城|菏泽|枣庄/}
 ];
-var SEM_LS = { edu:'hncrm_sem_edu_v2', meet:'hncrm_sem_meet_v2', fu:'hncrm_sem_fu_v11' };
+var SEM_LS = { edu:'hncrm_sem_edu_v2', meet:'hncrm_sem_meet_v2', fu:'hncrm_sem_fu_v12' };
 function semLoad(k, fb){ try{ var r=localStorage.getItem(SEM_LS[k]); if(!r) return fb; var o=JSON.parse(r); return (o&&o.length!==undefined)?o:fb; }catch(e){ return fb; } }
 function semSave(k, v){ try{ localStorage.setItem(SEM_LS[k], JSON.stringify(v)); }catch(e){} }
 
@@ -5233,8 +5234,18 @@ function SeminarTab(p){
     var attClinics=Object.keys(attClinicSet).length, totClinics=Object.keys(allClinicSet).length;
     function gradeOf(r){ var g=r.grade; if(g==null||g===''){ var cb=String(r.status||'')+String(r.result||''); if(cb.indexOf('已进入')>=0) return 100; if(cb.indexOf('待进入')>=0) return 60; return 0; } return +g||0; }
     var attRows=fu.filter(function(r){ return +r.att===1; });
-    var gradeEff=attRows.length? Math.round(attRows.reduce(function(s,r){ return s+gradeOf(r); },0)/attRows.length):0;
-    var gradeHi=attRows.filter(function(r){ return gradeOf(r)>=80; }).length;
+    // ── 참석 치과 이후 KPI는 모두 "참석 치과(attClinics)" 기준(치과 단위) ──
+    function clinNk(pred){ var s={}; fu.forEach(function(r){ if(pred(r)){ var cl=String(r.clinic||'').trim(); if(cl) s[cl]=1; } }); return Object.keys(s).length; }
+    var followClinN=clinNk(isFollow);
+    var schedClinN=clinNk(function(r){ return isFollow(r) && String(r.visit||'').trim()!==''; });
+    var visitDoneClinN=clinNk(function(r){ var d=vDate(r); return isFollow(r) && String(r.visit||'').trim()!=='' && d && d<vNow; });
+    var consultClinN=clinNk(function(r){ return isEnt(r)||isPend(r); });
+    var buyClinN=clinNk(isEnt);
+    // 고객등급도 치과 단위(치과별 최고 등급)로 집계 → 참석 치과 평균
+    var _cg={}; fu.forEach(function(r){ if(+r.att!==1) return; var cl=String(r.clinic||'').trim(); if(!cl) return; var g=gradeOf(r); if(_cg[cl]===undefined||g>_cg[cl]) _cg[cl]=g; });
+    var _cgArr=Object.keys(_cg).map(function(k){ return _cg[k]; });
+    var gradeEffClin=_cgArr.length? Math.round(_cgArr.reduce(function(s,g){return s+g;},0)/_cgArr.length):0;
+    var gradeHiClin=_cgArr.filter(function(g){ return g>=80; }).length;
     var mkpis=h('div',{className:'mkpi-row'},
       mk('참석률','签到率',pr(attN,tot),95,'up', attN+'/'+tot+L('명 참석','人签到')),
       h('div',{className:'mkpi'},
@@ -5242,11 +5253,11 @@ function SeminarTab(p){
         h('div',{className:'mkpi-v',style:{color:'var(--tl)'}}, attClinics, h('span',{style:{fontSize:'13px',fontWeight:700}}, L('개','家'))),
         h('div',{className:'mkpi-s'}, L('참석자 '+attN+'명','签到'+attN+'人')),
         h('div',{className:'mkpi-t'}, L('전체 '+totClinics+'개 치과','共'+totClinics+'家'))),
-      mk('후속 착수율','跟进启动率',pr(followN,tot),50,'up', followN+'/'+tot+L('명 착수','人跟进')),
-      mk('방문 일정 지정율','已排期率',pr(fuSchedN,followN),80,'up', fuSchedN+'/'+followN+L('명 지정','人排期')),
-      mk('방문율','拜访率',pr(visitDoneN,fuSchedN),90,'up', visitDoneN+'/'+fuSchedN+L('명 방문','人拜访')),
-      mk('전환율','转化率',pr(entN,attN),20,'up', entN+'/'+attN+L('개소 진입','家进入')),
-      mk('고객등급 효율','客户等级效率',gradeEff,60,'up', L('참석 '+attRows.length+'명 평균','签到'+attRows.length+'人均')+' · 80%↑ '+gradeHi+L('명','人')));
+      mk('후속 착수율','跟进启动率',pr(followClinN,attClinics),50,'up', followClinN+'/'+attClinics+L('개 치과','家')),
+      mk('방문 일정 지정율','已排期率',pr(schedClinN,attClinics),40,'up', schedClinN+'/'+attClinics+L('개 치과','家')),
+      mk('방문율','拜访率',pr(visitDoneClinN,attClinics),35,'up', visitDoneClinN+'/'+attClinics+L('개 치과','家')),
+      mk('전환율','转化率',pr(buyClinN,attClinics),15,'up', buyClinN+'/'+attClinics+L('개 진입','家进入')),
+      mk('고객등급 효율','客户等级效率',gradeEffClin,60,'up', L('참석 '+attClinics+'개 치과 평균','参会'+attClinics+'家均')+' · 80%↑ '+gradeHiClin+L('개','家')));
 
     /* ── 퍼널 (사전등록 → 첫 구매): 치과(참석 치과) 기준 ── */
     function clinN(pred){ var s={}; fu.forEach(function(r){ if(pred(r)){ var cl=String(r.clinic||'').trim(); if(cl) s[cl]=1; } }); return Object.keys(s).length; }
@@ -5469,8 +5480,8 @@ function SeminarTab(p){
           h('label',{className:'btn sm',style:{marginLeft:'6px',cursor:'pointer',position:'relative',overflow:'hidden'},title:L('동료가 보낸 .json 명단을 합치기/덮어쓰기','导入同事的.json名单')}, L('데이터 불러오기','导入数据'),
             h('input',{type:'file',accept:'.json,application/json',style:{position:'absolute',inset:0,opacity:0,cursor:'pointer'},onChange:function(e){ fuImport(e.target.files[0]); e.target.value=''; }}))),
         h('p',{className:'fu-lead',style:{margin:'0 0 10px'}},
-          h('b',{className:'fu-lead-t'}, L('세미나 참석 결과를 넘어, 초청→참석→후속→방문→구매 전 과정을 관리하는 화면입니다.','超越签到结果，管理邀请→签到→跟进→拜访→购买全过程的画面。')),
-          h('span',{className:'fu-lead-s'}, L('세미나 완료 후 후속관리 대상은 3주 이내 방문 완료 목표입니다.','研讨会结束后，跟进对象目标为3周内完成拜访。'))),
+          h('b',{className:'fu-lead-t'}, L('고객 초청 → 세미나 참석 → 후속 관리 → 고객 방문 → 구매 전환까지 전 과정을 체계적으로 관리합니다.','客户邀请 → 参会 → 跟进 → 拜访 → 购买转化，全过程系统化管理。')),
+          h('span',{className:'fu-lead-s'}, L('세미나 종료 후 각 담당자는 고객별 진행 상황과 후속 활동 내용을 CRM에 반드시 입력하여, 신규 고객 관리 효율과 구매 전환율 향상에 적극 활용해 주시기 바랍니다.','研讨会结束后，各负责人须将各客户进展及跟进内容录入CRM，用于提升新客管理效率与购买转化率。'))),
         c.mkpis);
     var listCard=h('div',{className:'card wide'},
         h('div',{className:'card-h'},
@@ -5565,11 +5576,11 @@ function App(){
     var s={}; s[FU_SEED_WEEK]=SEM_FU_SEED; return s;
   });    var semFu=_sfu[0], setSemFu=_sfu[1];
   var _sfuSH=useState(function(){
-    try{ var r=localStorage.getItem('hncrm_sem_fu_sh_v1'); if(r){ var o=JSON.parse(r); if(o && !Array.isArray(o) && typeof o==='object') return o; } }catch(e){}
+    try{ var r=localStorage.getItem('hncrm_sem_fu_sh_v2'); if(r){ var o=JSON.parse(r); if(o && !Array.isArray(o) && typeof o==='object') return o; } }catch(e){}
     var s={}; s['2026-W26']=SEM_FU_SEED_SH; return s;
   });    var semFuSH=_sfuSH[0], setSemFuSH=_sfuSH[1];
   var _sfuMay=useState(function(){
-    try{ var r=localStorage.getItem('hncrm_sem_fu_may_v1'); if(r){ var o=JSON.parse(r); if(o && !Array.isArray(o) && typeof o==='object') return o; } }catch(e){}
+    try{ var r=localStorage.getItem('hncrm_sem_fu_may_v2'); if(r){ var o=JSON.parse(r); if(o && !Array.isArray(o) && typeof o==='object') return o; } }catch(e){}
     var s={}; s['2026-W20']=SEM_FU_SEED_MAY; return s;
   });    var semFuMay=_sfuMay[0], setSemFuMay=_sfuMay[1];
   var _org=useState(function(){ try{
@@ -5602,8 +5613,8 @@ function App(){
   useEffect(function(){ semSave('edu', semEdu); },[semEdu]);
   useEffect(function(){ semSave('meet', semMeet); },[semMeet]);
   useEffect(function(){ semSave('fu', semFu); },[semFu]);
-  useEffect(function(){ try{ localStorage.setItem('hncrm_sem_fu_sh_v1', JSON.stringify(semFuSH)); }catch(e){} },[semFuSH]);
-  useEffect(function(){ try{ localStorage.setItem('hncrm_sem_fu_may_v1', JSON.stringify(semFuMay)); }catch(e){} },[semFuMay]);
+  useEffect(function(){ try{ localStorage.setItem('hncrm_sem_fu_sh_v2', JSON.stringify(semFuSH)); }catch(e){} },[semFuSH]);
+  useEffect(function(){ try{ localStorage.setItem('hncrm_sem_fu_may_v2', JSON.stringify(semFuMay)); }catch(e){} },[semFuMay]);
 
   // ── 언어(한국어/중문) ──
   var _lg=useState(function(){ try{ return localStorage.getItem('hncrm_lang')||'ko'; }catch(e){ return 'ko'; } });
@@ -6027,7 +6038,8 @@ function App(){
 
   function doCloudSave(){
     if(!gurl){ setCfg(true); setMsg({t:'err',m:'먼저 설정(⚙️)에서 클라우드 URL을 입력하세요.'}); return; }
-    if(!rows.length){ setMsg({t:'err',m:'저장할 데이터가 없습니다. 엑셀을 먼저 불러오세요.'}); return; }
+    var _semCnt=(function(){ var t=0; [semFu,semFuSH,semFuMay].forEach(function(mm){ for(var k in (mm||{})) t+=(mm[k]||[]).length; }); return t; })();
+    if(!rows.length && !_semCnt){ setMsg({t:'err',m:'저장할 데이터가 없습니다. 세미나 명단이나 엑셀을 먼저 불러오세요.'}); return; }
     var wk=curWeekKey();
     setBusy(true);
     cloudPeek(gurl).then(function(cur){
