@@ -3516,7 +3516,7 @@ var SEM_LS = { edu:'hncrm_sem_edu_v2', meet:'hncrm_sem_meet_v2', fu:'hncrm_sem_f
 var SEM_LIST_LS='hncrm_sem_list_v3', SEM_STORE_LS='hncrm_sem_store_v3', SEM_GROUPS_LS='hncrm_sem_groups_v3';
 function provCfgFor(pk){ return (pk==='DH')? DH_PROVS : null; }  // null → SeminarTab 기본(광동/광서/해남)
 // 본부(그룹) — 세미나는 각 본부 하부로 들어가고, 본부 헤더를 누르면 펴짐/닫힘
-function semDefaultGroups(){ return [ {k:'HN',ko:'화남본부',cn:'华南本部'}, {k:'DH',ko:'화동본부',cn:'华东本部'} ]; }
+function semDefaultGroups(){ return [ {k:'HN',ko:'화남본부',cn:'华南本部'}, {k:'DH',ko:'화동본부',cn:'华东本部'}, {k:'ETC',ko:'기타지역',cn:'其他地区'} ]; }
 function semDefaultList(){ return [
   {id:'hn7', group:'HN', title:{ko:'화남-7월-CEO 사롱 26/07/14',cn:'华南-7月-CEO沙龙 26/07/14'}, prov:'HN', mgrText:false},
   {id:'dh6', group:'DH', title:{ko:'화동-6월-CEO사롱 26/06/26',cn:'华东-6月-CEO沙龙 26/06/26'}, prov:'DH', mgrText:true},
@@ -5808,7 +5808,7 @@ function App(){
   var _se=useState(function(){ return semLoad('edu', SEM_EDU_SEED); });   var semEdu=_se[0], setSemEdu=_se[1];
   var _sm=useState(function(){ return semLoad('meet', SEM_MEET_SEED); }); var semMeet=_sm[0], setSemMeet=_sm[1];
   // ── 세미나 레지스트리(확장형): 본부(그룹) + 세미나 목록 + ID별 저장소 ──
-  var _sgrp=useState(function(){ try{ var r=localStorage.getItem(SEM_GROUPS_LS); if(r){ var o=JSON.parse(r); if(Array.isArray(o)&&o.length) return o; } }catch(e){} return semDefaultGroups(); });
+  var _sgrp=useState(function(){ var def=semDefaultGroups(); var stored=null; try{ var r=localStorage.getItem(SEM_GROUPS_LS); if(r){ var o=JSON.parse(r); if(Array.isArray(o)&&o.length) stored=o; } }catch(e){} if(!stored) return def; var have={}; stored.forEach(function(g){ have[g.k]=1; }); def.forEach(function(g){ if(!have[g.k]) stored.push(g); }); return stored; });
   var semGroups=_sgrp[0], setSemGroups=_sgrp[1];
   var _slist=useState(function(){ try{ var r=localStorage.getItem(SEM_LIST_LS); if(r){ var o=JSON.parse(r); if(Array.isArray(o)&&o.length) return o; } }catch(e){} return semDefaultList(); });
   var semList=_slist[0], setSemList=_slist[1];
