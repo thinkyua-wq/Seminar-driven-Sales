@@ -265,13 +265,15 @@ option,select,
 .mgr-cmt{font-size:13px;line-height:1.6;color:#000;border-top:1px solid var(--ln);padding-top:10px}
 .mgr-cmt p{margin:4px 0}
 /* ── 인원관리 CRM: 관리 KPI ── */
-.mkpi-row{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
-@media(max-width:1100px){.mkpi-row{grid-template-columns:repeat(4,1fr)}}
-.mkpi{background:#fff;border:1px solid var(--ln);border-radius:0;padding:8px 8px;min-width:0}
-.mkpi-l{font-size:11px;color:#475569;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mkpi-v{font-size:19px;font-weight:900;line-height:1.15;margin:2px 0 0}
-.mkpi-s{font-size:10.5px;color:#64748b;font-weight:600}
-.mkpi-t{font-size:10px;color:#94a3b8;font-weight:700;margin-top:3px;border-top:1px dashed var(--ln);padding-top:3px}
+.mkpi-row{display:grid;grid-template-columns:repeat(9,1fr);gap:5px}
+@media(max-width:1300px){.mkpi-row{grid-template-columns:repeat(5,1fr)}}
+@media(max-width:820px){.mkpi-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:520px){.mkpi-row{grid-template-columns:repeat(2,1fr)}}
+.mkpi{background:#fff;border:1px solid var(--ln);border-radius:0;padding:7px 6px;min-width:0}
+.mkpi-l{font-size:10.5px;color:#475569;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkpi-v{font-size:17px;font-weight:900;line-height:1.15;margin:2px 0 0;white-space:nowrap}
+.mkpi-s{font-size:10px;color:#64748b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mkpi-t{font-size:9.5px;color:#94a3b8;font-weight:700;margin-top:3px;border-top:1px dashed var(--ln);padding-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* ── 고객발굴 리드 문구 ── */
 .fu-lead{padding:11px 14px;background:linear-gradient(90deg,rgba(31,95,208,0.07),rgba(31,95,208,0.02));border-left:4px solid #1f5fd0;border-radius:6px}
 .guide{font-size:13px;color:#000;line-height:1.6}
@@ -5434,6 +5436,16 @@ function SeminarTab(p){
     var _cgArr=Object.keys(_cg).map(function(k){ return _cg[k]; });
     var gradeEffClin=_cgArr.length? Math.round(_cgArr.reduce(function(s,g){return s+g;},0)/_cgArr.length):0;
     var gradeHiClin=_cgArr.filter(function(g){ return g>=80; }).length;
+    // ── 시스템별 판매수량(수량 합계) + 판매 치과 수 ──
+    function _qn(r){ var q=parseFloat(String(r.qty||'').replace(/[^0-9.]/g,'')); return isNaN(q)?0:q; }
+    function sumSysQty(name){ var t=0; fu.forEach(function(r){ if(String(r.sys||'').indexOf(name)>=0) t+=_qn(r); }); return t; }
+    function sysClinN(name){ var s={}; fu.forEach(function(r){ if(String(r.sys||'').indexOf(name)>=0 && _qn(r)>0){ var cl=String(r.clinic||'').trim(); if(cl) s[cl]=1; } }); return Object.keys(s).length; }
+    var ariQty=sumSysQty('ARi'), bdQty=sumSysQty('BD'), ariCl=sysClinN('ARi'), bdCl=sysClinN('BD');
+    function mkNum(label,zh,val,sub,col){ return h('div',{className:'mkpi'},
+        h('div',{className:'mkpi-l'}, L(label,zh)),
+        h('div',{className:'mkpi-v',style:{color:col||'var(--tl)'}}, nf(val), h('span',{style:{fontSize:'13px',fontWeight:700}}, L('개','支'))),
+        h('div',{className:'mkpi-s'}, sub),
+        h('div',{className:'mkpi-t'}, L('시스템 열·수량 입력 기준','按系统列·数量'))); }
     var mkpis=h('div',{className:'mkpi-row'},
       mk('참석률','签到率',pr(attN,tot),95,'up', attN+'/'+tot+L('명 참석','人签到')),
       h('div',{className:'mkpi'},
@@ -5445,6 +5457,8 @@ function SeminarTab(p){
       mk('방문 일정 지정율','已排期率',pr(schedClinN,attClinics),40,'up', schedClinN+'/'+attClinics+L('개 치과','家')),
       mk('방문율','拜访率',pr(visitDoneClinN,attClinics),35,'up', visitDoneClinN+'/'+attClinics+L('개 치과','家')),
       mk('전환율','转化率',pr(buyClinN,attClinics),15,'up', buyClinN+'/'+attClinics+L('개 진입','家进入')),
+      mkNum('ARi 판매수량','ARi销量',ariQty, L(ariCl+'개 치과 판매',ariCl+'家'), '#3c9cb4'),
+      mkNum('BD 판매수량','BD销量',bdQty, L(bdCl+'개 치과 판매',bdCl+'家'), '#2e9e6b'),
       mk('고객진도율 효율','客户进度效率',gradeEffClin,60,'up', L('참석 '+attClinics+'개 치과 평균','参会'+attClinics+'家均')+' · 80%↑ '+gradeHiClin+L('개','家')));
 
     /* ── 퍼널 (사전등록 → 첫 구매): 치과(참석 치과) 기준 ── */
